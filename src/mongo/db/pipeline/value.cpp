@@ -21,6 +21,7 @@
 #include "db/jsobj.h"
 #include "db/pipeline/builder.h"
 #include "db/pipeline/document.h"
+#include <unicode/coll.h>
 #include "util/mongoutils/str.h"
 
 namespace mongo {
@@ -820,8 +821,17 @@ namespace mongo {
             /* these types were handled above */
             verify(false);
 
-        case String:
-            return rL->stringValue.compare(rR->stringValue);
+        case String: {
+            UErrorCode status = U_ZERO_ERROR;
+            // TODO: Move creation of collator out of here; Make configurable
+            Collator *coll = Collator::createInstance(NULL, status);
+            PRINT(U_SUCCESS(status));
+            if(U_SUCCESS(status)) {
+                int ret = coll->compareUTF8(rL->stringValue, rR->stringValue, status);
+                // TODO: check status
+                delete coll;
+                return ret;
+            }}
 
         case Object:
             return Document::compare(rL->getDocument(), rR->getDocument());

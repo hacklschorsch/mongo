@@ -24,6 +24,7 @@
 #include "mongo/platform/float_utils.h"
 #include "mongo/util/startup_test.h"
 
+#include <unicode/coll.h>
 
 namespace mongo {
 
@@ -453,10 +454,15 @@ namespace mongo {
             {
                 int lsz = *l;
                 int rsz = *r;
-                int common = min(lsz, rsz);
                 l++; r++; // skip the size byte
-                // use memcmp as we (will) allow zeros in UTF8 strings
-                int res = memcmp(l, r, common);
+
+                UErrorCode status = U_ZERO_ERROR;
+                // TODO: Only create the collator once & re-use it!
+                //       Figure out where we can attach the coll.
+                Collator *coll = Collator::createInstance(NULL, status);
+                int res = coll->compareUTF8((const char*)l, (const char*)r, status);
+                delete coll;
+
                 if( res ) 
                     return res;
                 // longer string is the greater one
