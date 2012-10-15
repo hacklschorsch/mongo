@@ -29,6 +29,8 @@
 #undef min
 #endif
 
+#include <unicode/coll.h>
+
 namespace mongo {
 
     /* must be same type when called, unless both sides are #s 
@@ -101,8 +103,14 @@ dodouble:
                 // we use memcmp as we allow zeros in UTF8 strings
                 int lsz = l.valuestrsize();
                 int rsz = r.valuestrsize();
-                int common = std::min(lsz, rsz);
-                int res = memcmp(l.valuestr(), r.valuestr(), common);
+
+                UErrorCode status = U_ZERO_ERROR;
+                // TODO: Only create the collator once & re-use it!
+                //       Figure out where we can attach the coll.
+                Collator *coll = Collator::createInstance(NULL, status);
+                int res = coll->compareUTF8(l.valuestr(), r.valuestr(), status);
+                delete coll;
+
                 if( res ) 
                     return res;
                 // longer string is the greater one
