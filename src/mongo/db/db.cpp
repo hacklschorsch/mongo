@@ -22,6 +22,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <fstream>
 
+#include "mongo/base/initializer.h"
 #include "mongo/db/client.h"
 #include "mongo/db/clientcursor.h"
 #include "mongo/db/cmdline.h"
@@ -31,9 +32,12 @@
 #include "mongo/db/dbmessage.h"
 #include "mongo/db/dbwebserver.h"
 #include "mongo/db/dur.h"
+#include "mongo/db/fail_point_service.h"
+#include "mongo/db/initialize_server_global_state.h"
 #include "mongo/db/instance.h"
 #include "mongo/db/introspect.h"
 #include "mongo/db/json.h"
+#include "mongo/db/kill_current_op.h"
 #include "mongo/db/module.h"
 #include "mongo/db/pdfile.h"
 #include "mongo/db/repl.h"
@@ -348,7 +352,7 @@ namespace mongo {
         boost::filesystem::path path( dbpath );
         for ( boost::filesystem::directory_iterator i( path );
                 i != boost::filesystem::directory_iterator(); ++i ) {
-            string fileName = boost::filesystem::path(*i).leaf();
+            string fileName = boost::filesystem::path(*i).leaf().string();
             if ( boost::filesystem::is_directory( *i ) &&
                     fileName.length() && fileName[ 0 ] == '$' )
                 boost::filesystem::remove_all( *i );
@@ -509,10 +513,12 @@ namespace mongo {
         unsigned long long missingRepl = checkIfReplMissingFromCommandLine();
         if (missingRepl) {
             log() << startupWarningsLog;
-            log() << "** warning: mongod started without --replSet yet " << missingRepl
+            log() << "** WARNING: mongod started without --replSet yet " << missingRepl
                   << " documents are present in local.system.replset" << startupWarningsLog;
-            log() << "**          restart with --replSet unless you are doing maintenance and no"
-                  << " other clients are connected" << startupWarningsLog;
+            log() << "**          Restart with --replSet unless you are doing maintenance and no"
+                  << " other clients are connected." << startupWarningsLog;
+            log() << "**          The TTL collection monitor will not start because of this." << startupWarningsLog;
+            log() << "**          For more info see http://www.mongodb.org/display/DOCS/TTL+Monitor" << startupWarningsLog;
             log() << startupWarningsLog;
         }
 
@@ -541,11 +547,7 @@ namespace mongo {
         d.clientCursorMonitor.go();
         PeriodicTask::theRunner->go();
         if (missingRepl) {
-            log() << "** warning: not starting TTL monitor" << startupWarningsLog;
-            log() << "**          if this member is not part of a replica set and you want to use "
-                  << startupWarningsLog;
-            log() << "**          TTL collections, remove local.system.replset and restart"
-                  << startupWarningsLog;
+            // a warning was logged earlier
         }
         else {
             startTTLBackgroundJob();
@@ -618,15 +620,18 @@ string arg_error_check(int argc, char* argv[]) {
     return "";
 }
 
-static int mongoDbMain(int argc, char* argv[]);
+static int mongoDbMain(int argc, char* argv[], char** envp);
 
-int main(int argc, char* argv[]) {
-    int exitCode = mongoDbMain(argc, argv);
+int main(int argc, char* argv[], char** envp) {
+    int exitCode = mongoDbMain(argc, argv, envp);
     ::_exit(exitCode);
 }
 
-static int mongoDbMain(int argc, char* argv[]) {
+static int mongoDbMain(int argc, char* argv[], char **envp) {
     static StaticObserver staticObserver;
+
+    mongo::runGlobalInitializersOrDie(argc, argv, envp);
+
     getcurns = ourgetns;
 
     po::options_description general_options("General options");
@@ -748,11 +753,6 @@ static int mongoDbMain(int argc, char* argv[]) {
     dbExecCommand = argv[0];
 
     srand(curTimeMicros());
-#if( BOOST_VERSION >= 104500 )
-    boost::filesystem::path::default_name_check( boost::filesystem2::no_check );
-#else
-    boost::filesystem::path::default_name_check( boost::filesystem::no_check );
-#endif
 
     {
         unsigned x = 0x12345678;
@@ -777,7 +777,10 @@ static int mongoDbMain(int argc, char* argv[]) {
         }
 
         if ( ! CmdLine::store( argc , argv , visible_options , hidden_options , positional_options , params ) )
-            return 0;
+            return EXIT_FAILURE;
+
+        if (!initializeServerGlobalState(params.count("shutdown")))
+            return EXIT_FAILURE;
 
         if (params.count("help")) {
             show_help_text(visible_options);
@@ -1083,7 +1086,7 @@ static int mongoDbMain(int argc, char* argv[]) {
         if (params.count("shutdown")){
             bool failed = false;
 
-            string name = ( boost::filesystem::path( dbpath ) / "mongod.lock" ).native_file_string();
+            string name = ( boost::filesystem::path( dbpath ) / "mongod.lock" ).string();
             if ( !boost::filesystem::exists( name ) || boost::filesystem::file_size( name ) == 0 )
                 failed = true;
 
@@ -1142,6 +1145,9 @@ static int mongoDbMain(int argc, char* argv[]) {
             log() << endl;
         }
 
+        if (params.count("enableFaultInjection")) {
+            enableFailPointCmd();
+        }
     }
 
     StartupTest::runTests();
@@ -1290,9 +1296,8 @@ namespace mongo {
             return TRUE;
 
         case CTRL_LOGOFF_EVENT:
-            rawOut( "CTRL_LOGOFF_EVENT signal" );
-            consoleTerminate( "CTRL_LOGOFF_EVENT" );
-            return TRUE;
+            // only sent to services, and only in pre-Vista Windows; FALSE means ignore
+            return FALSE;
 
         case CTRL_SHUTDOWN_EVENT:
             rawOut( "CTRL_SHUTDOWN_EVENT signal" );

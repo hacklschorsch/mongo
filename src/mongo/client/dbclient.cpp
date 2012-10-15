@@ -389,6 +389,14 @@ namespace mongo {
     }
 
     BSONObj DBClientWithCommands::getLastErrorDetailed(bool fsync, bool j, int w, int wtimeout) {
+        return getLastErrorDetailed("admin", fsync, j, w, wtimeout);
+    }
+
+    BSONObj DBClientWithCommands::getLastErrorDetailed(const std::string& db,
+                                                       bool fsync,
+                                                       bool j,
+                                                       int w,
+                                                       int wtimeout) {
         BSONObj info;
         BSONObjBuilder b;
         b.append( "getlasterror", 1 );
@@ -407,13 +415,21 @@ namespace mongo {
         if ( wtimeout > 0 )
             b.append( "wtimeout", wtimeout );
 
-        runCommand("admin", b.obj(), info);
+        runCommand(db, b.obj(), info);
 
         return info;
     }
 
     string DBClientWithCommands::getLastError(bool fsync, bool j, int w, int wtimeout) {
-        BSONObj info = getLastErrorDetailed(fsync, j, w, wtimeout);
+        return getLastError("admin", fsync, j, w, wtimeout);
+    }
+
+    string DBClientWithCommands::getLastError(const std::string& db,
+                                              bool fsync,
+                                              bool j,
+                                              int w,
+                                              int wtimeout) {
+        BSONObj info = getLastErrorDetailed(db, fsync, j, w, wtimeout);
         return getLastErrorString( info );
     }
 
@@ -772,6 +788,13 @@ namespace mongo {
         }
     }
 
+    void DBClientConnection::setSoTimeout(double timeout) {
+        _so_timeout = timeout;
+        if (p) {
+            p->setSocketTimeout(timeout);
+        }
+    }
+
     auto_ptr<DBClientCursor> DBClientBase::query(const string &ns, Query query, int nToReturn,
             int nToSkip, const BSONObj *fieldsToReturn, int queryOptions , int batchSize ) {
         auto_ptr<DBClientCursor> c( new DBClientCursor( this,
@@ -1044,7 +1067,14 @@ namespace mongo {
         return ss.str();
     }
 
-    bool DBClientWithCommands::ensureIndex( const string &ns , BSONObj keys , bool unique, const string & name , bool cache, bool background, int version ) {
+    bool DBClientWithCommands::ensureIndex( const string &ns,
+                                            BSONObj keys,
+                                            bool unique,
+                                            const string & name,
+                                            bool cache,
+                                            bool background,
+                                            int version,
+                                            int ttl ) {
         BSONObjBuilder toSave;
         toSave.append( "ns" , ns );
         toSave.append( "key" , keys );
@@ -1076,6 +1106,9 @@ namespace mongo {
 
         if ( cache )
             _seenIndexes.insert( cacheKey );
+
+        if ( ttl > 0 )
+            toSave.append( "expireAfterSeconds", ttl );
 
         insert( Namespace( ns.c_str() ).getSisterNS( "system.indexes"  ).c_str() , toSave.obj() );
         return 1;

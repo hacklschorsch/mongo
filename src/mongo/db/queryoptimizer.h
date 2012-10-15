@@ -51,7 +51,7 @@ namespace mongo {
                                        shared_ptr<const ParsedQuery>(),
                                const BSONObj &startKey = BSONObj(),
                                const BSONObj &endKey = BSONObj(),
-                               string special="" );
+                               const std::string& special="" );
 
         /** Categorical classification of a QueryPlan's utility. */
         enum Utility {
@@ -99,6 +99,7 @@ namespace mongo {
         const FieldRangeSet &multikeyFrs() const { return _frsMulti; }
         
         shared_ptr<Projection::KeyOnly> keyFieldsOnly() const { return _keyFieldsOnly; }
+        const ParsedQuery* parsedQuery() const { return _parsedQuery.get(); }
 
         /** @return a shared, lazily initialized matcher for the query plan. */
         shared_ptr<CoveredIndexMatcher> matcher() const;
@@ -120,7 +121,7 @@ namespace mongo {
                   const BSONObj &originalQuery,
                   const BSONObj &order,
                   const shared_ptr<const ParsedQuery> &parsedQuery,
-                  string special );
+                  const std::string& special );
         void init( const FieldRangeSetPair *originalFrsp,
                   const BSONObj &startKey,
                   const BSONObj &endKey );
@@ -675,7 +676,6 @@ namespace mongo {
 
         virtual bool isMultiKey() const { return _mps->hasMultiKey(); }
 
-        virtual shared_ptr< CoveredIndexMatcher > matcherPtr() const { return _matcher; }
         virtual CoveredIndexMatcher* matcher() const { return _matcher.get(); }
 
         virtual bool capped() const { return _c->capped(); }

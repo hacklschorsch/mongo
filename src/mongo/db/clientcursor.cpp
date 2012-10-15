@@ -22,19 +22,23 @@
    Cursor -- and its derived classes -- are our internal cursors.
 */
 
-#include "pch.h"
-#include "clientcursor.h"
-#include "introspect.h"
+#include "mongo/pch.h"
+
+#include "mongo/db/clientcursor.h"
+
 #include <time.h>
-#include "db.h"
-#include "commands.h"
-#include "repl_block.h"
-#include "../util/processinfo.h"
-#include "../util/timer.h"
+
 #include "mongo/client/dbclientinterface.h"
-#include "mongo/db/scanandorder.h"
-#include "pagefault.h"
+#include "mongo/db/commands.h"
+#include "mongo/db/db.h"
+#include "mongo/db/introspect.h"
+#include "mongo/db/kill_current_op.h"
+#include "mongo/db/pagefault.h"
 #include "mongo/db/repl/rs.h"
+#include "mongo/db/repl_block.h"
+#include "mongo/db/scanandorder.h"
+#include "mongo/util/processinfo.h"
+#include "mongo/util/timer.h"
 
 namespace mongo {
 
@@ -741,7 +745,7 @@ namespace mongo {
                     else {
                         log() << " mapped:" << totalMapped;
                     }
-                    log() << " connections:" << connTicketHolder.used();
+                    log() << " connections:" << Listener::globalTicketHolder.used();
                     if (theReplSet) {
                         log() << " replication threads:" << 
                             ReplSetImpl::replWriterThreadCount + 
@@ -792,7 +796,7 @@ namespace mongo {
         if ( ! cc().getAuthenticationInfo()->isAuthorizedReads( nsToDatabase( cursor->ns() ) ) )
             return false;
 
-        // mustn't have an active ClientCursor::Pointer
+        // Must not have an active ClientCursor::Pin.
         massert( 16089,
                 str::stream() << "Cannot kill active cursor " << id,
                 cursor->_pinValue < 100 );

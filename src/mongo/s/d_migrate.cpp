@@ -40,6 +40,7 @@
 #include "../db/clientcursor.h"
 #include "../db/pagefault.h"
 #include "../db/repl.h"
+#include "../db/kill_current_op.h"
 
 #include "../client/connpool.h"
 #include "../client/distlock.h"
@@ -256,14 +257,20 @@ namespace mongo {
             _memoryUsed = 0;
         }
 
-        void start( string ns ,
+        /**
+         * @return false if cannot start. One of the reason for not being able to
+         *     start is there is already an existing migration in progress.
+         */
+        bool start( const std::string& ns ,
                     const BSONObj& min ,
                     const BSONObj& max ,
                     const BSONObj& shardKeyPattern ) {
             scoped_lock ll(_workLock);
             scoped_lock l(_m); // reads and writes _active
 
-            verify( ! _active );
+            if (_active) {
+                return false;
+            }
 
             verify( ! min.isEmpty() );
             verify( ! max.isEmpty() );
@@ -280,6 +287,7 @@ namespace mongo {
             verify( _memoryUsed == 0 );
 
             _active = true;
+            return true;
         }
 
         void done() {
@@ -564,7 +572,7 @@ namespace mongo {
                 }
                 
                 if ( recordToTouch ) {
-                    // its safe to touch here bceause we have a LockMongoFilesShared
+                    // its safe to touch here because we have a LockMongoFilesShared
                     // we can't do where we get the lock because we would have to unlock the main readlock and tne _trackerLocks
                     // simpler to handle this out there
                     recordToTouch->touch();
@@ -650,15 +658,24 @@ namespace mongo {
     } migrateFromStatus;
 
     struct MigrateStatusHolder {
-        MigrateStatusHolder( string ns ,
+        MigrateStatusHolder( const std::string& ns ,
                              const BSONObj& min ,
                              const BSONObj& max ,
                              const BSONObj& shardKeyPattern ) {
-            migrateFromStatus.start( ns , min , max , shardKeyPattern );
+            _isAnotherMigrationActive = !migrateFromStatus.start(ns, min, max, shardKeyPattern);
         }
         ~MigrateStatusHolder() {
-            migrateFromStatus.done();
+            if (!_isAnotherMigrationActive) {
+                migrateFromStatus.done();
+            }
         }
+
+        bool isAnotherMigrationActive() const {
+            return _isAnotherMigrationActive;
+        }
+
+    private:
+        bool _isAnotherMigrationActive;
     };
 
     void _cleanupOldData( OldDataCleanup cleanup ) {
@@ -984,6 +1001,11 @@ namespace mongo {
             }
 
             MigrateStatusHolder statusHolder( ns , min , max , shardKeyPattern );
+            if (statusHolder.isAnotherMigrationActive()) {
+                errmsg = "moveChunk is already in progress from this shard";
+                return false;
+            }
+
             {
                 // this gets a read lock, so we know we have a checkpoint for mods
                 if ( ! migrateFromStatus.storeCurrentLocs( maxChunkSize , errmsg , result ) )
@@ -1509,7 +1531,7 @@ namespace mongo {
                         numCloned++;
                         clonedBytes += o.objsize();
 
-                        if ( secondaryThrottle ) {
+                        if ( secondaryThrottle && thisTime > 0 ) {
                             if ( ! waitForReplication( cc().getLastOp(), 2, 60 /* seconds to wait */ ) ) {
                                 warning() << "secondaryThrottle on, but doc insert timed out after 60 seconds, continuing" << endl;
                             }
@@ -1678,10 +1700,16 @@ namespace mongo {
                         }
                     }
 
+                    // id object most likely has form { _id : ObjectId(...) }
+                    // infer from that correct index to use, e.g. { _id : 1 }
+                    BSONObj idIndexPattern;
+                    Helpers::toKeyFormat( id , idIndexPattern );
+
+                    // TODO: create a better interface to remove objects directly
                     Helpers::removeRange( ns ,
                                           id ,
                                           id,
-                                          findShardKeyIndexPattern_locked( ns , shardKeyPattern ), 
+                                          idIndexPattern ,
                                           true , /*maxInclusive*/
                                           false , /* secondaryThrottle */
                                           cmdLine.moveParanoia ? &rs : 0 , /*callback*/
@@ -1843,9 +1871,26 @@ namespace mongo {
             migrateStatus.from = cmdObj["from"].String();
             migrateStatus.min = cmdObj["min"].Obj().getOwned();
             migrateStatus.max = cmdObj["max"].Obj().getOwned();
-            migrateStatus.shardKeyPattern = cmdObj["shardKeyPattern"].Obj().getOwned();
             migrateStatus.secondaryThrottle = cmdObj["secondaryThrottle"].trueValue();
-            
+            if (cmdObj.hasField("shardKeyPattern")) {
+                migrateStatus.shardKeyPattern = cmdObj["shardKeyPattern"].Obj().getOwned();
+            } else {
+                // shardKeyPattern may not be provided if another shard is from pre 2.2
+                // In that case, assume the shard key pattern is the same as the range
+                // specifiers provided.
+                BSONObj keya , keyb;
+                Helpers::toKeyFormat( migrateStatus.min , keya );
+                Helpers::toKeyFormat( migrateStatus.max , keyb );
+                verify( keya == keyb );
+
+                warning() << "No shard key pattern provided by source shard for migration."
+                    " This is likely because the source shard is running a version prior to 2.2."
+                    " Falling back to assuming the shard key matches the pattern of the min and max"
+                    " chunk range specifiers.  Inferred shard key: " << keya << endl;
+
+                migrateStatus.shardKeyPattern = keya.getOwned();
+            }
+
             if ( migrateStatus.secondaryThrottle && ! anyReplEnabled() ) {
                 warning() << "secondaryThrottle asked for, but not replication" << endl;
                 migrateStatus.secondaryThrottle = false;

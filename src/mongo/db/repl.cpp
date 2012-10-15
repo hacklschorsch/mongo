@@ -491,7 +491,8 @@ namespace mongo {
     }
 
     /* grab initial copy of a database from the master */
-    void ReplSource::resync(string db) {
+    void ReplSource::resync(const std::string& dbName) {
+        const std::string db(dbName);   // need local copy of the name, we're dropping the original
         string dummyNs = resyncDrop( db.c_str(), "internal" );
         Client::Context ctx( dummyNs );
         {
@@ -1155,7 +1156,7 @@ namespace mongo {
         return true;
     }
     
-    bool OplogReader::connect(string hostName) {
+    bool OplogReader::connect(const std::string& hostName) {
         if (conn() != 0) {
             return true;
         }
@@ -1353,7 +1354,7 @@ namespace mongo {
                 if( s == 1 ) {
                     if( nApplied == 0 ) s = 2;
                     else if( nApplied > 100 ) {
-                        // sleep very little - just enought that we aren't truly hammering master
+                        // sleep very little - just enough that we aren't truly hammering master
                         sleepmillis(75);
                         s = 0;
                     }

@@ -249,8 +249,9 @@ namespace mongo {
         }
         while( pat.more() ){
             BSONElement patElt = pat.next();
-            verify( patElt.isNumber() );
-            if( minOrMax * patElt.numberInt() == 1){
+            // for non 1/-1 field values, like {a : "hashed"}, treat order as ascending
+            int order = patElt.isNumber() ? patElt.numberInt() : 1;
+            if( minOrMax * order == 1 ){
                 newBound.appendMaxKey("");
             }
             else {
@@ -328,7 +329,7 @@ namespace mongo {
 
             Timer secondaryThrottleTime;
 
-            if ( secondaryThrottle ) {
+            if ( secondaryThrottle && numDeleted > 0 ) {
                 if ( ! waitForReplication( c.getLastOp(), 2, 60 /* seconds to wait */ ) ) {
                     warning() << "replication to secondaries for removeRange at least 60 seconds behind" << endl;
                 }

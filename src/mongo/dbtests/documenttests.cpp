@@ -805,9 +805,9 @@ namespace DocumentTests {
             class LongToDouble : public ToDoubleBase {
                 intrusive_ptr<const Value> value() {
                     // A long that cannot be exactly represented as a double.
-                    return Value::createDouble( 0x8fffffffffffffffLL );
+                    return Value::createDouble( static_cast<double>( 0x8fffffffffffffffLL ) );
                 }
-                double expected() { return (double)0x8fffffffffffffffLL; }
+                double expected() { return static_cast<double>( 0x8fffffffffffffffLL ); }
             };
             
             /** Coerce double to double. */

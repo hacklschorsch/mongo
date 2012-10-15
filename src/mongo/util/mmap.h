@@ -51,6 +51,7 @@ namespace mongo {
         static unsigned getEra() { return era; }
 
         static void assertExclusivelyLocked() { mmmutex.assertExclusivelyLocked(); }
+        static void assertAtLeastReadLocked() { mmmutex.assertAtLeastReadLocked(); }
     };
 
     class LockMongoFilesExclusive { 
@@ -79,7 +80,7 @@ namespace mongo {
         };
 
         /** @param fun is called for each MongoFile.
-            calledl from within a mutex that MongoFile uses. so be careful not to deadlock.
+            called from within a mutex that MongoFile uses. so be careful not to deadlock.
         */
         template < class F >
         static void forEach( F fun );
@@ -99,7 +100,7 @@ namespace mongo {
         virtual bool isMongoMMF() { return false; }
 
         string filename() const { return _filename; }
-        void setFilename(string fn);
+        void setFilename(const std::string& fn);
 
     private:
         string _filename;
@@ -142,7 +143,7 @@ namespace mongo {
         /** @return The MongoFile object associated with the specified file name.  If no file is open
                     with the specified name, returns null.
         */
-        MongoFile* findByPath(string path) {
+        MongoFile* findByPath(const std::string& path) {
             map<string,MongoFile*>::iterator i = MongoFile::pathToFile.find(path);
             return  i == MongoFile::pathToFile.end() ? NULL : i->second;
         }
@@ -185,7 +186,7 @@ namespace mongo {
         /* Create. Must not exist.
            @param zero fill file with zeros when true
         */
-        void* create(string filename, unsigned long long len, bool zero);
+        void* create(const std::string& filename, unsigned long long len, bool zero);
 
         void flush(bool sync);
         virtual Flushable * prepareFlush();

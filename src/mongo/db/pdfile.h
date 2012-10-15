@@ -48,7 +48,7 @@ namespace mongo {
     class Cursor;
     class OpDebug;
 
-    void dropDatabase(string db);
+    void dropDatabase(const std::string& db);
     bool repairDatabase(string db, string &errmsg, bool preserveClonedFilesOnFailure = false, bool backupOriginalFiles = false);
 
     /* low level - only drops this ns */
@@ -155,6 +155,8 @@ namespace mongo {
         static DeletedRecord* makeDeletedRecord(const DiskLoc& dl, int len);
 
         void deleteRecord(const char *ns, Record *todelete, const DiskLoc& dl, bool cappedOK = false, bool noWarn = false, bool logOp=false);
+
+        void deleteRecord(NamespaceDetails* d, const char *ns, Record *todelete, const DiskLoc& dl, bool cappedOK = false, bool noWarn = false, bool logOp=false);
 
         /* does not clean up indexes, etc. : just deletes the record in the pdfile. use deleteRecord() to unindex */
         void _deleteRecord(NamespaceDetails *d, const char *ns, Record *todelete, const DiskLoc& dl);
@@ -284,6 +286,8 @@ namespace mongo {
          * and how many times we throw a PageFaultException
          */
         static void appendStats( BSONObjBuilder& b );
+
+        static void appendWorkingSetInfo( BSONObjBuilder& b );
     private:
         
         int _netLength() const { return _lengthWithHeaders - HeaderSize; }
@@ -314,6 +318,7 @@ namespace mongo {
     */
     class Extent {
     public:
+        enum { extentSignature = 0x41424344 };
         unsigned magic;
         DiskLoc myLoc;
         DiskLoc xnext, xprev; /* next/prev extent for this namespace */
@@ -330,10 +335,7 @@ namespace mongo {
 
         static int HeaderSize() { return sizeof(Extent)-4; }
 
-        bool validates() {
-            return !(firstRecord.isNull() ^ lastRecord.isNull()) &&
-                   length >= 0 && !myLoc.isNull();
-        }
+        bool validates(const DiskLoc diskLoc, BSONArrayBuilder* errors = NULL);
 
         BSONObj dump() {
             return BSON( "loc" << myLoc.toString() << "xnext" << xnext.toString() << "xprev" << xprev.toString()
@@ -356,7 +358,7 @@ namespace mongo {
         /* like init(), but for a reuse case */
         DiskLoc reuse(const char *nsname, bool newUseIsAsCapped);
 
-        bool isOk() const { return magic == 0x41424344; }
+        bool isOk() const { return magic == extentSignature; }
         void assertOk() const { verify(isOk()); }
 
         Record* newRecord(int len);

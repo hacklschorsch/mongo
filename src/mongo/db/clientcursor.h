@@ -100,6 +100,9 @@ namespace mongo {
                 }
             }
             void release() {
+                if ( _cursorid == INVALID_CURSOR_ID ) {
+                    return;
+                }
                 ClientCursor *cursor = c();
                 _cursorid = INVALID_CURSOR_ID;
                 if ( cursor ) {
@@ -306,8 +309,10 @@ namespace mongo {
         static ClientCursor* find_inlock(CursorId id, bool warn = true) {
             CCById::iterator it = clientCursorsById.find(id);
             if ( it == clientCursorsById.end() ) {
-                if ( warn )
-                    OCCASIONALLY out() << "ClientCursor::find(): cursor not found in map " << id << " (ok after a drop)\n";
+                if ( warn ) {
+                    OCCASIONALLY out() << "ClientCursor::find(): cursor not found in map '" << id
+                                       << "' (ok after a drop)" << endl;
+                }
                 return 0;
             }
             return it->second;
@@ -378,7 +383,7 @@ namespace mongo {
 
     private: // methods
 
-        // cursors normally timeout after an inactivy period to prevent excess memory use
+        // cursors normally timeout after an inactivity period to prevent excess memory use
         // setting this prevents timeout of the cursor in question.
         void noTimeout() { _pinValue++; }
 

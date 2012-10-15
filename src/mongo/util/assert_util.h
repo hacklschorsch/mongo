@@ -95,11 +95,13 @@ namespace mongo {
 
         virtual const char* what() const throw() { return _ei.msg.c_str(); }
         virtual int getCode() const { return _ei.code; }
-
         virtual void appendPrefix( std::stringstream& ss ) const { }
         virtual void addContext( const std::string& str ) {
             _ei.msg = str + causedBy( _ei.msg );
         }
+
+        // context when applicable. otherwise ""
+        std::string _shard;
 
         virtual std::string toString() const;
 
@@ -219,9 +221,9 @@ namespace mongo {
     enum { ASSERT_ID_DUPKEY = 11000 };
 
     /* throws a uassertion with an appropriate msg */
-    MONGO_COMPILER_NORETURN void streamNotGood( int code , std::string msg , std::ios& myios );
+    MONGO_COMPILER_NORETURN void streamNotGood( int code, const std::string& msg, std::ios& myios );
 
-    inline void assertStreamGood(unsigned msgid, std::string msg, std::ios& myios) {
+    inline void assertStreamGood(unsigned msgid, const std::string& msg, std::ios& myios) {
         if( !myios.good() ) streamNotGood(msgid, msg, myios);
     }
 

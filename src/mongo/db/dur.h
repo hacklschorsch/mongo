@@ -34,7 +34,7 @@ namespace mongo {
                 is created first, and the journal will just replay the creation if the create didn't
                 happen because of crashing.
             */
-            virtual void createdFile(string filename, unsigned long long len) = 0;
+            virtual void createdFile(const std::string& filename, unsigned long long len) = 0;
 
             /** Declarations of write intent.
 
@@ -95,7 +95,7 @@ namespace mongo {
 
             /** Commit if enough bytes have been modified. Current threshold is 50MB
 
-                The idea is that long running write operations that dont yield
+                The idea is that long running write operations that don't yield
                 (like creating an index or update with $atomic) can call this
                 whenever the db is in a sane state and it will prevent commits
                 from growing too large.
@@ -168,7 +168,7 @@ namespace mongo {
             void* writingAtOffset(void *buf, unsigned ofs, unsigned len) { return buf; }
             void* writingRangesAtOffsets(void *buf, const vector< pair< long long, unsigned > > &ranges) { return buf; }
             void declareWriteIntent(void *, unsigned);
-            void createdFile(string filename, unsigned long long len) { }
+            void createdFile(const std::string& filename, unsigned long long len) { }
             bool awaitCommit() { return false; }
             bool commitNow() { return false; }
             bool commitIfNeeded(bool) { return false; }
@@ -182,7 +182,7 @@ namespace mongo {
             void* writingAtOffset(void *buf, unsigned ofs, unsigned len);
             void* writingRangesAtOffsets(void *buf, const vector< pair< long long, unsigned > > &ranges);
             void declareWriteIntent(void *, unsigned);
-            void createdFile(string filename, unsigned long long len);
+            void createdFile(const std::string& filename, unsigned long long len);
             bool awaitCommit();
             bool commitNow();
             bool aCommitIsNeeded() const;

@@ -125,6 +125,8 @@ namespace mongo {
      * will be stale */
     string getHostNameCached();
 
+    string prettyHostName();
+
     /**
      * thrown by Socket and SockAddr
      */
@@ -132,7 +134,7 @@ namespace mongo {
     public:
         const enum Type { CLOSED , RECV_ERROR , SEND_ERROR, RECV_TIMEOUT, SEND_TIMEOUT, FAILED_STATE, CONNECT_ERROR } _type;
         
-        SocketException( Type t , string server , int code = 9001 , string extra="" ) 
+        SocketException( Type t , const std::string& server , int code = 9001 , const std::string& extra="" ) 
             : DBException( (string)"socket exception ["  + _getStringType( t ) + "] for " + server, code ),
               _type(t),
               _server(server),
@@ -143,7 +145,7 @@ namespace mongo {
 
         bool shouldPrint() const { return _type != CLOSED; }
         virtual string toString() const;
-
+        virtual const std::string* server() const { return &_server; }
     private:
 
         // TODO: Allow exceptions better control over their messages

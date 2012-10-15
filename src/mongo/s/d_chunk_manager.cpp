@@ -182,12 +182,7 @@ namespace mongo {
         BSONElement e = collectionDoc["key"];
         uassert( 13542 , str::stream() << "collection doesn't have a key: " << collectionDoc , ! e.eoo() && e.isABSONObj() );
 
-        BSONObj keys = e.Obj().getOwned();
-        BSONObjBuilder b;
-        BSONForEach( key , keys ) {
-            b.append( key.fieldName() , 1 );
-        }
-        _key = b.obj();
+        _key = e.Obj().getOwned();
     }
 
     void ShardChunkManager::_fillChunks( DBClientCursorInterface* cursor ) {
@@ -402,7 +397,7 @@ namespace mongo {
         // so in practice, a migrate somewhere may force this split to pick up a version that has the major portion higher
         // than the one that this shard has been using
         //
-        // TODO drop the uniqueness constraint and tigthen the check below so that only the minor portion of version changes
+        // TODO drop the uniqueness constraint and tighten the check below so that only the minor portion of version changes
         if ( version <= _version ) {
             uasserted( 14039 , str::stream() << "version " << version.toString() << " not greater than " << _version.toString() );
         }

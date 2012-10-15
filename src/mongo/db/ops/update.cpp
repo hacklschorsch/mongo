@@ -100,25 +100,20 @@ namespace mongo {
 
             if ( logop ) {
                 DEV verify( mods->size() );
-
                 BSONObj pattern = patternOrig;
-                if ( mss->haveArrayDepMod() ) {
-                    BSONObjBuilder patternBuilder;
-                    patternBuilder.appendElements( pattern );
-                    mss->appendSizeSpecForArrayDepMods( patternBuilder );
-                    pattern = patternBuilder.obj();
-                }
+                BSONObj logObj = mss->getOpLogRewrite();
+                DEBUGUPDATE( "\t rewrite update: " << logObj );
 
-                if( mss->needOpLogRewrite() ) {
-                    DEBUGUPDATE( "\t rewrite update: " << mss->getOpLogRewrite() );
-                    logOp("u", ns, mss->getOpLogRewrite() ,
-                          &pattern, 0, fromMigrate );
-                }
-                else {
-                    logOp("u", ns, updateobj, &pattern, 0, fromMigrate );
+                // It is possible that the entire mod set was a no-op over this document.  We
+                // would have an empty log record in that case. If we call logOp, with an empty
+                // record, that would be replicated as "clear this record", which is not what
+                // we want. Therefore, to get a no-op in the replica, we simply don't log.
+                if ( logObj.nFields() ) {
+                    logOp("u", ns, logObj, &pattern, 0, fromMigrate );
                 }
             }
             return UpdateResult( 1 , 1 , 1 , BSONObj() );
+
         } // end $operator update
 
         // regular update
@@ -336,13 +331,11 @@ namespace mongo {
                     const BSONObj& onDisk = loc.obj();
 
                     ModSet* useMods = mods.get();
-                    bool forceRewrite = false;
 
                     auto_ptr<ModSet> mymodset;
                     if ( details.hasElemMatchKey() && mods->hasDynamicArray() ) {
                         useMods = mods->fixDynamicArray( details.elemMatchKey() );
                         mymodset.reset( useMods );
-                        forceRewrite = true;
                     }
 
                     auto_ptr<ModSetState> mss = useMods->prepare( onDisk );
@@ -394,21 +387,16 @@ namespace mongo {
 
                     if ( logop ) {
                         DEV verify( mods->size() );
+                        BSONObj logObj = mss->getOpLogRewrite();
+                        DEBUGUPDATE( "\t rewrite update: " << logObj );
 
-                        if ( mss->haveArrayDepMod() ) {
-                            BSONObjBuilder patternBuilder;
-                            patternBuilder.appendElements( pattern );
-                            mss->appendSizeSpecForArrayDepMods( patternBuilder );
-                            pattern = patternBuilder.obj();
-                        }
-
-                        if ( forceRewrite || mss->needOpLogRewrite() ) {
-                            DEBUGUPDATE( "\t rewrite update: " << mss->getOpLogRewrite() );
-                            logOp("u", ns, mss->getOpLogRewrite() ,
-                                  &pattern, 0, fromMigrate );
-                        }
-                        else {
-                            logOp("u", ns, updateobj, &pattern, 0, fromMigrate );
+                        // It is possible that the entire mod set was a no-op over this
+                        // document.  We would have an empty log record in that case. If we
+                        // call logOp, with an empty record, that would be replicated as "clear
+                        // this record", which is not what we want. Therefore, to get a no-op
+                        // in the replica, we simply don't log.
+                        if ( logObj.nFields() ) {
+                            logOp("u", ns, logObj , &pattern, 0, fromMigrate );
                         }
                     }
                     numModded++;

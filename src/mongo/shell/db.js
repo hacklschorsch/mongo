@@ -394,12 +394,15 @@ DB.prototype.help = function() {
     return __magicNoPrint;
 }
 
-DB.prototype.printCollectionStats = function(){
+DB.prototype.printCollectionStats = function(scale){
+
+    /* no error checking on scale, done in stats already */
+
     var mydb = this;
     this.getCollectionNames().forEach(
         function(z){
             print( z );
-            printjson( mydb.getCollection(z).stats() );
+            printjson( mydb.getCollection(z).stats(scale) );
             print( "---" );
         }
     );
@@ -447,7 +450,7 @@ DB.prototype._getExtraInfo = function(action) {
     var res = this.getLastErrorCmd(1); 
     if (res) {
         if (res.err != undefined && res.err != null) {
-            // error occured, display it
+            // error occurred, display it
             print(res.err);
             return;
         }
